@@ -4,11 +4,11 @@ import streamlit as st
 st.title("Simple Web App")
 
 # ورودی کاربر
-name = st.text_input("Enter your name:")
+esme kirito bego = st.text_input("Enter your name:")
 
 # دکمه برای تایید
-if st.button("Submit"):
-    st.write(f"Hello, {name}! Welcome to our web app.")
+if st.button("taieade kirito bokon"):
+    st.write(f"Fuck YOU, {name}! Welcome to our kossher.")
 gender = st.radio("Select your gender:", ("Male", "Female", "Other"))
 st.write(f"You selected: {gender}")
 age = st.slider("Select your age:", 0, 100)
