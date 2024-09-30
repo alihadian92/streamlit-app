@@ -4,15 +4,15 @@ import streamlit as st
 st.title("Simple Web App")
 
 # ورودی کاربر
-esme kirito bego = st.text_input("Enter your name:")
+name = st.text_input("esme kirit?")
 
 # دکمه برای تایید
-if st.button("taieade kirito bokon"):
-    st.write(f"Fuck YOU, {name}! Welcome to our kossher.")
-gender = st.radio("Select your gender:", ("Male", "Female", "Other"))
-st.write(f"You selected: {gender}")
-age = st.slider("Select your age:", 0, 100)
-st.write(f"Your age is: {age}")
+if st.button("taiead esme kirit"):
+    st.write(f"Hello, {name}! Welcome to our web app.")
+gender = st.radio("jense kirit?:", ("Male", "Female", "Other"))
+st.write(f"jense kirit?: {gender}")
+age = st.slider("sene kirit?", 0, 100)
+st.write(f"sene kirit?: {age}")
 import matplotlib.pyplot as plt
 import numpy as np
 
