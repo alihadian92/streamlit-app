@@ -1,7 +1,7 @@
 import streamlit as st
 
 # عنوان اپلیکیشن
-st.title("Simple Web App")
+st.title("kossher Web App")
 
 # ورودی کاربر
 name = st.text_input("esme kirit?")
