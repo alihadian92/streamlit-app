@@ -1,21 +1,34 @@
 import streamlit as st
+from google.cloud import texttospeech
+import os
 
-# عنوان اپلیکیشن
-st.title("kossher Web App")
+# تنظیم کلید API
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "AIzaSyBaKDrDQ55nFvS4JSYWZEf0kTZUn9wMmWQ"
 
-# ورودی کاربر
-name = st.text_input("esme kirit?")
+# ایجاد کلاینت Google Text-to-Speech
+client = texttospeech.TextToSpeechClient()
 
-# دکمه برای تایید
-if st.button("taiead esme kirit"):
-    st.write(f"Hello, {name}! Welcome to our web app.")
-gender = st.radio("jense kirit?:", ("Male", "Female", "Other"))
-st.write(f"jense kirit?: {gender}")
-age = st.slider("sene kirit?", 0, 100)
-st.write(f"sene kirit?: {age}")
-import matplotlib.pyplot as plt
-import numpy as np
+def synthesize_text(text):
+    input_text = texttospeech.SynthesisInput(text=text)
+    voice = texttospeech.VoiceSelectionParams(
+        language_code="en-US", ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL)
+    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
 
-chart_data = np.random.randn(50, 3)
-st.line_chart(chart_data)
+    response = client.synthesize_speech(
+        input=input_text, voice=voice, audio_config=audio_config)
 
+    with open("output.mp3", "wb") as out:
+        out.write(response.audio_content)
+    return "output.mp3"
+
+st.title("Text-to-Speech Web App")
+
+# گرفتن ورودی از کاربر
+text = st.text_area("Enter text for voice-over")
+
+if st.button("Convert"):
+    if text:
+        output = synthesize_text(text)
+        st.audio(output, format="audio/mp3")
+    else:
+        st.warning("Please enter some text.")
