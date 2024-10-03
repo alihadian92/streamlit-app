@@ -1,6 +1,3 @@
 streamlit
-matplotlib
-numpy
-pandas
-streamlit
-google-cloud-texttospeech
+gtts
+IPython
