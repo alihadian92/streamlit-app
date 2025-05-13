@@ -60,7 +60,7 @@ THELEMA_MEANINGS: dict[str, str] = {
     "۱. جادوگر (The Magician)": "اراده متمرکز، تجلی، تسلط بر ابزار. به‌کارگیری قدرت خلاق برای تحقق خواسته‌ها.",
     "۲. کاهنه اعظم (The High Priestess)": "راز، سکوت، شهودِ برتر. دریچه‌ای به حکمت نهان و دانش باطنی.",
     "۳. امپرس (The Empress)": "باروری، عشقِ مادرانه، طبیعت. زایش ایده‌ها و فراوانی.",
-    "۴. امپراطور (The Emperor)": "ساختار، اقتدار، قانون. قدرتی که نظم می‌آفریند و مسئولیت می‌پذیرد.",
+    "۴. امپراطور (The Emperor)": "ساختار، اقتدار، قانون. قدرتی که نظم می‌آفریند و مسئولیت‌پذیر است.",
     "۵. هیرو فانت (The Hierophant)": "آیین و سنت، مدرس روحانی، شعائر مقدس. تمسک به میراث معنوی.",
     "۶. عاشقان (The Lovers)": "انتخاب آگاهانه، اتحاد دوگانه‌ها، عشق الهی. همسویی قلب و عقل.",
     "۷. ارابه (The Chariot)": "پیروزی اراده، کنترل نیروهای متضاد، پیشرفت قهرمانانه.",
@@ -81,24 +81,24 @@ THELEMA_MEANINGS: dict[str, str] = {
 }
 
 # ─── Utility: Optional Images ────────────────────────────────────────────────
-IMAGE_BASE = "https://raw.githubusercontent.com/<your-user>/tarot-seven-card/main/images"  # سفارشی کنید
+IMAGE_BASE = "https://raw.githubusercontent.com/<your-user>/tarot-seven-card/main/images"
 
 def get_card_image(card_name: str) -> str | None:
     """Return image URL for a given card name if available in the repo."""
     slug = card_name.split("(")[1].split(")")[0].strip().lower().replace(" ", "-")
     url = f"{IMAGE_BASE}/{slug}.jpg"
-    # اگر تصویر موجود نیست، None برگردانید (در دیپلوی اصلی میتوانید چک کنید)
-    return url if False else None  # ← هنگام افزودن تصاویر این خط را تغییر دهید
+    # Return None for now; enable when images are provided
+    return None
 
 # ─── Session State ───────────────────────────────────────────────────────────
 if "cards" not in st.session_state:
     st.session_state.cards: list[str] = []
 
 # ─── Control Buttons ────────────────────────────────────────────────────────
-cols = st.columns([1, 1])
-if cols[0].button("🎴 کارت‌ها را بکش", type="primary"):
+col_draw, col_reset = st.columns(2)
+if col_draw.button("🎴 کارت‌ها را بکش", type="primary"):
     st.session_state.cards = random.sample(MAJOR_ARCANA, 7)
-if cols[1].button("🔄 پاک‌کردن", type="secondary"):
+if col_reset.button("🔄 پاک‌کردن", type="secondary"):
     st.session_state.cards = []
 
 # ─── Display Reading ────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ if st.session_state.cards:
             st.image(img_url, use_column_width=True)
         st.divider()
 
-    # ─ Summary Guidance (simple) ─
+    # ─ Summary Guidance ─
     st.subheader("👁️‍🗨️ جمع‌بندی کلی")
     st.write(
         "این ۷ کارت، داستان مسیر فعلی شما را از ریسک و پتانسیل (کارت نخست) تا نتیجهٔ احتمالی (کارت هفتم) روایت می‌کنند.\n"
@@ -124,4 +124,5 @@ else:
 # ─── Footer ─────────────────────────────────────────────────────────────────
 st.markdown(
     "---\n"
-    "© 2025 با ❤️ توسط شما · [ک
+    "© 2025 با ❤️ توسط شما · [کد منبع](https://github.com/<your-user>/tarot-seven-card) · برای سرگرمی استفاده شود"
+)
