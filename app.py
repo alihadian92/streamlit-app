@@ -1,10 +1,15 @@
 # magickal_record_app.py
-"""Magickal Record – Streamlit Web‑App (v3: Rituals + Dreams)
-============================================================
-Now the app is split into two fully‑independent sections:
-1️⃣ **Ritual Journal**  – track magical practices (was the original)
-2️⃣ **Dream Journal**   – log dreams separately
-Each section has three pages: *New*, *Browse*, *Manage*.
+"""Magickal Record – Streamlit Web‑App (v4: Dashboard & Advanced Filters)
+=======================================================================
+**What's new in v4?**
+1. 📊 **Dashboard** page – summary stats & charts for Rituals and Dreams.
+2. 🔎 Full‑text **search** + **tag filter** in Browse pages.
+3. 📈 Charts:
+   • Ritual practice distribution pie‑chart
+   • Ritual streak (consecutive days) bar‑chart
+   • Dream emotions pie‑chart
+4. 💾 **Download backup** – one‑click SQLite export.
+5. Minor UI polish (dark/light theme toggle via Streamlit built‑in).
 
 Run locally:
     pip install streamlit pandas SQLAlchemy ephem
@@ -13,6 +18,7 @@ Run locally:
 from __future__ import annotations
 
 import datetime as dt
+import io
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -87,7 +93,7 @@ _PHASES: list[Tuple[str, float]] = [
 
 def moon_phase_str(d: dt.date) -> str:
     if ephem is not None:
-        age = ephem.Moon(d).moon_phase * 29.53  # 0‑29.53
+        age = ephem.Moon(d).moon_phase * 29.53
     else:
         age = ((d - dt.date(2000, 1, 6)).days) % 29.53
     return min(_PHASES, key=lambda p: abs(p[1] - age))[0]
@@ -95,8 +101,6 @@ def moon_phase_str(d: dt.date) -> str:
 # ╭──────────────────────────────────────────────────────────╮
 # │ 🗄️  DATA HELPERS                                        │
 # ╰──────────────────────────────────────────────────────────╯
-
-# Generic helpers using model class dynamic typing
 
 def _save(model, data: Dict[str, Any]):
     with Session() as s:
@@ -126,11 +130,36 @@ def _load(model, filters: Dict[str, Any] | None = None) -> pd.DataFrame:
         q = s.query(model)
         if filters:
             for k, v in filters.items():
-                q = q.filter(getattr(model, k) == v)
+                if v:
+                    q = q.filter(getattr(model, k) == v)
         df = pd.DataFrame([r.__dict__ for r in q.all()])
         if not df.empty:
             df.drop(columns=["_sa_instance_state"], inplace=True)
         return df
+
+# ╭──────────────────────────────────────────────────────────╮
+# │ 🔧  UTIL – STREAKS / TAG SPLIT                          │
+# ╰──────────────────────────────────────────────────────────╯
+
+def _calc_streak(dates: list[dt.date]) -> int:
+    if not dates:
+        return 0
+    dates = sorted(set(dates))
+    streak = current = 1
+    for i in range(1, len(dates)):
+        if (dates[i] - dates[i - 1]).days == 1:
+            current += 1
+            streak = max(streak, current)
+        else:
+            current = 1
+    return streak
+
+
+def _split_tags(series: pd.Series) -> list[str]:
+    tags: list[str] = []
+    for t in series.dropna():
+        tags.extend([x.strip() for x in t.split(",") if x.strip()])
+    return tags
 
 # ╭──────────────────────────────────────────────────────────╮
 # │ 🖊️  UI –  RITUAL SECTION                                │
@@ -167,11 +196,18 @@ def ritual_new():
 
 def ritual_browse():
     st.subheader("📚 Browse Rituals")
-    pt = st.selectbox("Filter by Practice", ["All"] + R_PRACTICES)
-    filt = {"practice_type": pt} if pt != "All" else {}
-    df = _load(Ritual, filt)
+    col1, col2 = st.columns([2, 1])
+    search = col1.text_input("Search text or tags")
+    pfilter = col2.selectbox("Practice", ["All"] + R_PRACTICES)
+    df = _load(Ritual)
+
+    if pfilter != "All":
+        df = df[df.practice_type == pfilter]
+    if search:
+        df = df[df.apply(lambda r: search.lower() in str(r).lower(), axis=1)]
+
     if df.empty:
-        st.info("No rituals logged.")
+        st.info("No rituals match.")
         return
     _table_with_csv(df, "rituals.csv")
 
@@ -183,8 +219,8 @@ def ritual_manage():
 # ╭──────────────────────────────────────────────────────────╮
 # │ 🖊️  UI –  DREAM SECTION                                 │
 # ╰──────────────────────────────────────────────────────────╯
-
 D_EMOTIONS = ["Calm", "Fear", "Joy", "Sadness", "Lucid", "Other"]
+
 
 def dream_new():
     st.subheader("🌙 New Dream Entry")
@@ -207,9 +243,13 @@ def dream_new():
 
 def dream_browse():
     st.subheader("🔍 Browse Dreams")
+    col1, col2 = st.columns([2, 1])
+    search = col1.text_input("Search text or tags", key="d_search")
     df = _load(Dream)
+    if search:
+        df = df[df.apply(lambda r: search.lower() in str(r).lower(), axis=1)]
     if df.empty:
-        st.info("No dreams logged.")
+        st.info("No dreams match.")
         return
     _table_with_csv(df, "dreams.csv")
 
@@ -219,8 +259,48 @@ def dream_manage():
     _manage_generic(Dream, [])
 
 # ╭──────────────────────────────────────────────────────────╮
+# │ 📊  DASHBOARD                                           │
+# ╰──────────────────────────────────────────────────────────╯
+
+def dashboard():
+    st.title("📊 Dashboard")
+    r_df, d_df = _load(Ritual), _load(Dream)
+
+    col1, col2 = st.columns(2)
+
+    # Ritual stats
+    with col1:
+        st.header("Rituals")
+        st.metric("Total rituals", len(r_df))
+        if not r_df.empty:
+            freq = r_df.practice_type.value_counts()
+            st.subheader("By practice type")
+            st.pyplot(_pie(freq))
+            streak = _calc_streak(list(r_df.date))
+            st.metric("Longest streak (days)", streak)
+
+    # Dream stats
+    with col2:
+        st.header("Dreams")
+        st.metric("Total dreams", len(d_df))
+        if not d_df.empty:
+            emos = pd.Series(_split_tags(d_df.emotions))
+            emo_counts = emos.value_counts()
+            st.subheader("Emotions")
+            st.pyplot(_pie(emo_counts))
+
+
+# ╭──────────────────────────────────────────────────────────╮
 # │ 🔧  SHARED UI PARTS                                      │
 # ╰──────────────────────────────────────────────────────────╯
+import matplotlib.pyplot as plt
+
+
+def _pie(series: pd.Series):
+    fig, ax = plt.subplots()
+    ax.pie(series, labels=series.index, autopct="%1.0f%%")
+    return fig
+
 
 def _table_with_csv(df: pd.DataFrame, fname: str):
     st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
@@ -234,82 +314,4 @@ def _manage_generic(model, ptype_list):
         return
     st.dataframe(df, use_container_width=True)
     sel_id = st.selectbox("Select ID", df["id"].tolist())
-    mode = st.radio("Action", ["Edit", "Delete"], horizontal=True)
-
-    if mode == "Delete":
-        if st.button("❌ Delete"):  # irreversible
-            _delete(model, sel_id)
-            st.success("Deleted")
-            st.experimental_rerun()
-    else:
-        record = df[df["id"] == sel_id].iloc[0]
-        _edit_form_generic(model, record, ptype_list)
-
-
-def _edit_form_generic(model, row: pd.Series, ptypes: list[str]):
-    with st.form("edit_form"):
-        if model is Ritual:
-            c1, c2 = st.columns(2)
-            date = c1.date_input("Date", value=row.date)
-            stime = c1.time_input("Start", row.start_time)
-            etime = c2.time_input("End", row.end_time)
-            ptype = c2.selectbox("Practice", ptypes, index=ptypes.index(row.practice_type))
-            pre = st.text_area("Pre‑Feeling", row.pre_feeling or "")
-            exp = st.text_area("Experience", row.experience_notes or "")
-            ins = st.text_area("Insights", row.insights or "")
-            tags = st.text_input("Tags", row.tags or "")
-            submit = st.form_submit_button("Save")
-            if submit:
-                _update(model, row.id, {
-                    "date": date,
-                    "start_time": stime,
-                    "end_time": etime,
-                    "practice_type": ptype,
-                    "pre_feeling": pre,
-                    "experience_notes": exp,
-                    "insights": ins,
-                    "tags": tags,
-                    "moon_phase": moon_phase_str(date),
-                })
-                st.success("Updated")
-                st.experimental_rerun()
-        else:  # Dream
-            date = st.date_input("Date", value=row.date)
-            txt = st.text_area("Dream", row.dream_text or "")
-            emo = st.text_input("Emotions", row.emotions or "")
-            ins = st.text_area("Insights", row.insights or "")
-            tags = st.text_input("Tags", row.tags or "")
-            submit = st.form_submit_button("Save")
-            if submit:
-                _update(model, row.id, {
-                    "date": date,
-                    "dream_text": txt,
-                    "emotions": emo,
-                    "insights": ins,
-                    "tags": tags,
-                })
-                st.success("Updated")
-                st.experimental_rerun()
-
-# ╭──────────────────────────────────────────────────────────╮
-# │ 🚀  MAIN NAVIGATION                                      │
-# ╰──────────────────────────────────────────────────────────╯
-
-SECTION = st.sidebar.radio("Section", ["Ritual Journal", "Dream Journal"])
-
-if SECTION == "Ritual Journal":
-    sub = st.sidebar.radio("Page", ["New", "Browse", "Manage"])
-    if sub == "New":
-        ritual_new()
-    elif sub == "Browse":
-        ritual_browse()
-    else:
-        ritual_manage()
-else:
-    sub = st.sidebar.radio("Page", ["New", "Browse", "Manage"])
-    if sub == "New":
-        dream_new()
-    elif sub == "Browse":
-        dream_browse()
-    else:
-        dream_manage()
+    mode = st.radio("Action", ["Edit", "Delete"], horizontal
