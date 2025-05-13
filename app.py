@@ -1,12 +1,10 @@
 # magickal_record_app.py
-"""Magickal Record – Streamlit Web‑App (Enhanced v1)
+"""Magickal Record – Streamlit Web-App (Enhanced v2)
 ===================================================
-Features added compared to the ultra‑minimal prototype:
-• SQLite database (no more CSV race‑conditions)
-• Rich fields (start/end time, feelings, insights, tags…)
-• Moon‑phase auto‑fill (uses `ephem` if installed → graceful fallback)
-• Browse page with filters + daily‑count chart + export CSV
-• Basic app‑level password (optional; see `APP_PASSWORD` secrets)
+新增ها / New in this version
+---------------------------
+• **Delete & Edit** capability (Manage page)
+• Keeps previous features: SQLite, moon-phase, export, password
 
 Run locally:
     pip install streamlit pandas SQLAlchemy ephem
@@ -15,9 +13,8 @@ Run locally:
 from __future__ import annotations
 
 import datetime as dt
-import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 import pandas as pd
 import streamlit as st
@@ -25,16 +22,19 @@ from sqlalchemy import Column, Date, Integer, String, Text, Time, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # ─────────────────────────────────────────────────────────────
-# 🔐 OPTIONAL SIMPLE PASSWORD --------------------------------
+# 🔐 OPTIONAL PASSWORD ---------------------------------------
 # ─────────────────────────────────────────────────────────────
-APP_PASSWORD = st.secrets.get("APP_PASSWORD", "")  # add in Streamlit Cloud Secrets
+APP_PASSWORD = st.secrets.get("APP_PASSWORD", "")
 if APP_PASSWORD:
-    passwd_ok = st.text_input("Password", type="password")
-    if passwd_ok != APP_PASSWORD:
-        st.stop()
+    if st.session_state.get("auth_ok") is not True:
+        pw = st.text_input("Password", type="password")
+        if pw == APP_PASSWORD:
+            st.session_state["auth_ok"] = True
+        else:
+            st.stop()
 
 # ─────────────────────────────────────────────────────────────
-# 💾 DATABASE (SQLite) ---------------------------------------
+# 💾 DATABASE ------------------------------------------------
 # ─────────────────────────────────────────────────────────────
 DB_PATH = Path("magickal_record.db")
 engine = create_engine(f"sqlite:///{DB_PATH}", future=True, echo=False)
@@ -44,6 +44,7 @@ Base = declarative_base()
 
 class Entry(Base):
     __tablename__ = "entries"
+
     id = Column(Integer, primary_key=True)
     date = Column(Date, default=dt.date.today)
     start_time = Column(Time)
@@ -59,65 +60,83 @@ class Entry(Base):
 Base.metadata.create_all(engine)
 
 # ─────────────────────────────────────────────────────────────
-# 🌙 MOON‑PHASE UTILS ----------------------------------------
+# 🌙 MOON-PHASE UTIL -----------------------------------------
 # ─────────────────────────────────────────────────────────────
 try:
     import ephem  # type: ignore
 except ModuleNotFoundError:
-    ephem = None  # fallback later
+    ephem = None
 
 _PHASES: list[tuple[str, float]] = [
     ("New Moon", 0),
-    ("Waxing Crescent", 3.5),
+    ("Waxing Crescent", 4),
     ("First Quarter", 7),
     ("Waxing Gibbous", 11),
-    ("Full Moon", 14.5),
+    ("Full Moon", 15),
     ("Waning Gibbous", 18),
     ("Last Quarter", 22),
     ("Waning Crescent", 26),
 ]
 
 
-def moon_phase_str(date_obj: dt.date) -> str:
-    """Return nearest named moon phase for given date."""
+def moon_phase_str(d: dt.date) -> str:
     if ephem is not None:
-        moon = ephem.Moon(date_obj)
-        age = moon.moon_phase * 29.53  # 0‑29.53 days
+        moon = ephem.Moon(d)
+        age = moon.moon_phase * 29.53
     else:
-        # fallback: average lunation 29.53 days since a reference new moon
-        ref_new = dt.date(2000, 1, 6)  # known new moon
-        age = (date_obj - ref_new).days % 29.53
+        ref = dt.date(2000, 1, 6)
+        age = (d - ref).days % 29.53
     return min(_PHASES, key=lambda p: abs(p[1] - age))[0]
 
 # ─────────────────────────────────────────────────────────────
 # 📦 DATA HELPERS --------------------------------------------
 # ─────────────────────────────────────────────────────────────
 
-def save_entry(data: dict[str, Any]) -> None:
-    with Session() as sess:
-        sess.add(Entry(**data))
-        sess.commit()
+def save_entry(data: Dict[str, Any]) -> None:
+    with Session() as s:
+        s.add(Entry(**data))
+        s.commit()
 
 
-def load_entries(filters: dict[str, Any] | None = None) -> pd.DataFrame:
-    with Session() as sess:
-        query = sess.query(Entry)
+def update_entry(entry_id: int, data: Dict[str, Any]) -> None:
+    with Session() as s:
+        entry = s.get(Entry, entry_id)
+        if entry:
+            for k, v in data.items():
+                setattr(entry, k, v)
+            s.commit()
+
+
+def delete_entry(entry_id: int) -> None:
+    with Session() as s:
+        entry = s.get(Entry, entry_id)
+        if entry:
+            s.delete(entry)
+            s.commit()
+
+
+def load_entries(filters: Dict[str, Any] | None = None) -> pd.DataFrame:
+    with Session() as s:
+        q = s.query(Entry)
         if filters:
-            if pt := filters.get("practice_type"):
-                query = query.filter(Entry.practice_type == pt)
-            if s := filters.get("start"):
-                query = query.filter(Entry.date >= s)
-            if e := filters.get("end"):
-                query = query.filter(Entry.date <= e)
-        records = query.all()
-        df = pd.DataFrame([r.__dict__ for r in records])
+            if (pt := filters.get("practice_type")):
+                q = q.filter(Entry.practice_type == pt)
+            if (st_date := filters.get("start")):
+                q = q.filter(Entry.date >= st_date)
+            if (en_date := filters.get("end")):
+                q = q.filter(Entry.date <= en_date)
+        rows = q.all()
+        df = pd.DataFrame([r.__dict__ for r in rows])
         if not df.empty:
             df.drop(columns=["_sa_instance_state"], inplace=True)
         return df
 
 # ─────────────────────────────────────────────────────────────
-# 🖊️ UI PAGES ------------------------------------------------
+# 🖊️ PAGES ---------------------------------------------------
 # ─────────────────────────────────────────────────────────────
+
+PRACTICES = ["LBRP", "Middle Pillar", "Meditation", "Resh", "Eucharist", "Yoga", "Other"]
+
 
 def page_new_entry() -> None:
     st.header("📝 New Entry")
@@ -127,18 +146,15 @@ def page_new_entry() -> None:
     start_time = col1.time_input("Start Time", value=dt.datetime.now().time())
     end_time = col2.time_input("End Time")
 
-    practice_type = col2.selectbox(
-        "Practice Type",
-        ["LBRP", "Middle Pillar", "Meditation", "Resh", "Eucharist", "Yoga", "Other"],
-    )
+    practice_type = col2.selectbox("Practice Type", PRACTICES)
 
-    pre_feeling = st.text_area("Pre‑Feeling / Mindset")
+    pre_feeling = st.text_area("Pre-Feeling / Mindset")
     experience_notes = st.text_area("Experience During Practice")
-    insights = st.text_area("Post‑Practice Insights")
-    tags = st.text_input("Tags (comma‑separated)")
+    insights = st.text_area("Post-Practice Insights")
+    tags = st.text_input("Tags (comma-separated)")
 
     if st.button("💾 Save Entry"):
-        data = {
+        save_entry({
             "date": date,
             "start_time": start_time,
             "end_time": end_time,
@@ -148,44 +164,96 @@ def page_new_entry() -> None:
             "insights": insights,
             "tags": tags,
             "moon_phase": moon_phase_str(date),
-        }
-        save_entry(data)
+        })
         st.success("Saved ✨")
         st.balloons()
 
 
+def browsing_table(df: pd.DataFrame) -> None:
+    st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
+    st.download_button("⬇️ Export CSV", df.to_csv(index=False), "magickal_entries.csv")
+    daily = df.groupby("date").size().reset_index(name="count").sort_values("date")
+    if not daily.empty:
+        st.line_chart(daily.set_index("date"))
+
+
 def page_browse() -> None:
     st.header("📚 Browse Entries")
-
-    with st.expander("Filters", expanded=False):
-        col1, col2, col3 = st.columns(3)
-        ft = col1.selectbox(
-            "Practice Type",
-            ["All", "LBRP", "Middle Pillar", "Meditation", "Resh", "Eucharist", "Yoga", "Other"],
-        )
-        sdate = col2.date_input("From", value=None)
-        edate = col3.date_input("To", value=None)
-
-    filters: dict[str, Any] = {}
+    ft, sdate, edate = _filter_controls()
+    filters: Dict[str, Any] = {}
     if ft != "All":
         filters["practice_type"] = ft
     if sdate:
         filters["start"] = sdate
     if edate:
         filters["end"] = edate
-
     df = load_entries(filters)
     if df.empty:
         st.info("No entries found.")
+    else:
+        browsing_table(df)
+
+
+def _filter_controls():
+    with st.expander("Filters", expanded=False):
+        c1, c2, c3 = st.columns(3)
+        ft = c1.selectbox("Practice Type", ["All"] + PRACTICES)
+        sd = c2.date_input("From", value=None)
+        ed = c3.date_input("To", value=None)
+    return ft, sd, ed
+
+
+def page_manage() -> None:
+    st.header("🛠️ Manage Entries (Edit / Delete)")
+    df = load_entries({})
+    if df.empty:
+        st.info("No entries yet.")
         return
 
-    st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
+    df_display = df[["id", "date", "practice_type", "tags"]]
+    st.dataframe(df_display, use_container_width=True)
 
-    st.download_button("⬇️ Export CSV", df.to_csv(index=False), file_name="magickal_entries.csv")
+    ids = df["id"].tolist()
+    sel_id = st.selectbox("Select entry ID", ids)
+    entry_row = df[df["id"] == sel_id].iloc[0]
 
-    daily = df.groupby("date").size().reset_index(name="count").sort_values("date")
-    st.subheader("Entry Count by Day")
-    st.line_chart(daily.set_index("date"))
+    mode = st.radio("Action", ["Edit", "Delete"], horizontal=True)
+
+    if mode == "Edit":
+        _edit_form(sel_id, entry_row)
+    else:
+        if st.button("❌ Delete this entry", type="secondary"):
+            delete_entry(sel_id)
+            st.success("Entry deleted.")
+            st.experimental_rerun()
+
+
+def _edit_form(eid: int, row: pd.Series) -> None:
+    with st.form(key="edit_form"):
+        col1, col2 = st.columns(2)
+        date = col1.date_input("Date", value=row.date)
+        start_time = col1.time_input("Start Time", row.start_time)
+        end_time = col2.time_input("End Time", row.end_time)
+        practice_type = col2.selectbox("Practice Type", PRACTICES, index=PRACTICES.index(row.practice_type) if row.practice_type in PRACTICES else len(PRACTICES)-1)
+        pre_feeling = st.text_area("Pre-Feeling", row.pre_feeling or "")
+        experience_notes = st.text_area("Experience", row.experience_notes or "")
+        insights = st.text_area("Insights", row.insights or "")
+        tags = st.text_input("Tags", row.tags or "")
+        submitted = st.form_submit_button("💾 Save Changes")
+    if submitted:
+        update_entry(eid, {
+            "date": date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "practice_type": practice_type,
+            "pre_feeling": pre_feeling,
+            "experience_notes": experience_notes,
+            "insights": insights,
+            "tags": tags,
+            "moon_phase": moon_phase_str(date),
+        })
+        st.success("Updated!")
+        st.experimental_rerun()
 
 # ─────────────────────────────────────────────────────────────
 # 🚀 MAIN -----------------------------------------------------
@@ -193,11 +261,13 @@ def page_browse() -> None:
 
 def main() -> None:
     st.set_page_config("Magickal Record", page_icon="✨", layout="wide")
-    page = st.sidebar.radio("Menu", ["New Entry", "Browse"], index=0)
+    page = st.sidebar.radio("Menu", ["New Entry", "Browse", "Manage"], index=0)
     if page == "New Entry":
         page_new_entry()
-    else:
+    elif page == "Browse":
         page_browse()
+    else:
+        page_manage()
 
 
 if __name__ == "__main__":
