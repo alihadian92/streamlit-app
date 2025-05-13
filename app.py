@@ -1,34 +1,27 @@
 """
-Streamlit web app: Tarot Interpreter – Thelema / Qabalah
-========================================================
-*Offline draw, online interpretation*  
-این نسخه، علاوه بر نمایش تکیِ هر کارت، یک **جمع‌بندی هوشمند** از فال ارائه می‌دهد که مضامین کلیدی و پیامِ کلی را استخراج می‌کند.
+Streamlit web app · Tarot Interpreter (Thelema × Qabalah)
+=========================================================
+این برنامه جهت **تفسیر آنلاین** کارت‌هایی است که کاربر به‌صورت فیزیکی کشیده است.  
+قائم / معکوس هر کارت، معانی مکتب تِلِما و مسیر متناظر آن روی درخت حیات قبالا را نشان می‌دهد و در پایان یک **جمع‌بندی هوشمند** ارائه می‌کند.
 
-Author  : <your name>  
-Repo    : https://github.com/<your-user>/tarot-interpreter
-
-2025 — For entertainment purposes only.
+Repo: https://github.com/<your‑user>/tarot‑interpreter  
+© 2025 — For entertainment only
 """
 from __future__ import annotations
 
 import streamlit as st
 from collections import Counter
 
-# ─── Page Configuration ──────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="مفسر تاروت (تِلِما/قبالا)",
-    page_icon="🃏",
-    layout="centered",
-)
+# ────────────────────────────────────────── UI CONFIG ─────────────────────────────────────────
+st.set_page_config(page_title="مفسر تاروت (تِلِما/قبالا)", page_icon="🃏", layout="centered")
 
 st.title("🃏 مفسر تاروت – معانی تِلِما و قبالا")
 st.caption(
-    "ابتدا کارت‌های خود را بکشید؛ سپس برای هر موقعیت کارت و وضعیت آن (قائم/معکوس) را انتخاب کنید و بر دکمهٔ «تفسیر کن» بزنید."
+    "ابتدا کارت‌های خود را بکشید؛ سپس برای هر موقعیت، کارت و وضعیت آن (قائم/معکوس) را انتخاب کنید و دکمهٔ «تفسیر کن» را بزنید."
 )
 
-# ─── CARD DATA ──────────────────────────────────────────────────────────────
-# (lists and dictionaries unchanged – truncated for brevity in this snippet)
-MAJOR_ARCANA = [
+# ─────────────────────────────────────────── DATA ────────────────────────────────────────────
+MAJOR_ARCANA: list[str] = [
     "۰. دیوانه (The Fool)", "۱. جادوگر (The Magician)", "۲. کاهنه اعظم (The High Priestess)",
     "۳. امپرس (The Empress)", "۴. امپراطور (The Emperor)", "۵. هیرو فانت (The Hierophant)",
     "۶. عاشقان (The Lovers)", "۷. ارابه (The Chariot)", "۸. قدرت (Strength)",
@@ -38,100 +31,61 @@ MAJOR_ARCANA = [
     "۱۸. ماه (The Moon)", "۱۹. خورشید (The Sun)", "۲۰. داوری (Judgement)", "۲۱. جهان (The World)"
 ]
 
-# **** FULL dictionaries (UPRIGHT / REVERSED / KABBALAH) kept from prior version ****
-# → They remain exactly the same; omitted here for brevity ←
-
-# ─── SPREAD TEMPLATES ────────────────────────────────────────────────────────
-SPREADS = {
-    "۳ کارت (گذشته/حال/آینده)": ["گذشته", "حال", "آینده"],
-    "۵ کارت (عنصرهای پنتاگرام)": ["روح", "آتش", "آب", "هوا", "زمین"],
-    "۷ کارت (عبور جادویی تِلِما)": [f"موقعیت {i}" for i in range(1, 8)],
+# --- Thelema meanings (upright) -------------------------------------------
+THELEMA_UPRIGHT: dict[str, str] = {
+    "۰. دیوانه (The Fool)": "آغازِ سفر، پتانسیل خالص و رهایی کودکانه؛ اعتماد به جریان کائنات و استقبال از ناشناخته‌ها.",
+    "۱. جادوگر (The Magician)": "تجلی اراده؛ تسلط بر عناصر برای تبدیل ایده به واقعیت از راه تمرکز و مهارت.",
+    "۲. کاهنه اعظم (The High Priestess)": "راز و سکوت؛ شهود عمیق و دسترسی به دانش باطنی ورای حواس ظاهری.",
+    "۳. امپرس (The Empress)": "باروری و پرورش؛ عشقِ مادرانه، فراوانی طبیعت و خلاقیت هنرمندانه.",
+    "۴. امپراطور (The Emperor)": "ساختار و اقتدار؛ رهبری مسئولانه، قانون‌گذاری و تثبیت قلمرو مادی.",
+    "۵. هیرو فانت (The Hierophant)": "سنت و آیین؛ آموزه‌های معنوی، پیوند با میراث مقدس و انتقال دانش رمزآلود.",
+    "۶. عاشقان (The Lovers)": "اتحاد و انتخاب؛ عشق الهی یا تصمیم مهمی که دوگانگی را به هماهنگی می‌رساند.",
+    "۷. ارابه (The Chariot)": "پیروزی اراده؛ مهار نیروهای متضاد و پیشرفت قهرمانانه به سوی مقصد.",
+    "۸. قدرت (Strength)": "نیروی نرم؛ شجاعت همراه با مهر و مهار غرایز از راه شفقت.",
+    "۹. مرتاض (The Hermit)": "انزوای خردمندانه؛ جستجوی حقیقت درونی و روشنایی مشعلی برای دیگران.",
+    "۱۰. چرخ سرنوشت (Wheel of Fortune)": "چرخش ادوار؛ تغییر کارمایی، اقبال متغیر و پذیرش قانون علت و معلول.",
+    "۱۱. عدالت (Justice)": "توازن و مسئولیت؛ قضاوت منصفانه و هماهنگی کیهانی.",
+    "۱۲. مرد معلق (The Hanged Man)": "تسلیم درک‌بخش؛ دید وارونه و قربانی کهنه برای شهود نو.",
+    "۱۳. مرگ (Death)": "دگرگونی بنیادین؛ پایان لازم برای تولد تازه و رها کردن تعلقات.",
+    "۱۴. اعتدال (Temperance)": "کیمیاگری روح؛ آشتی اضداد، میانه‌روی و توازن انرژی.",
+    "۱۵. شیطان (The Devil)": "آگاهی از سایه؛ زنجیرهای خودساخته و آزمون میل زمینی.",
+    "۱۶. برج (The Tower)": "فروپاشی ناگهانی؛ انهدام ساختار کهنه و آزادی از محدودیت.",
+    "۱۷. ستاره (The Star)": "امید و الهام؛ آرامش پس از طوفان و شفابخشی الهی.",
+    "۱۸. ماه (The Moon)": "قلمروی رؤیا؛ توهم، ناخودآگاه و مواجهه با ترس‌های پنهان.",
+    "۱۹. خورشید (The Sun)": "روشنی و سرور؛ موفقیت، سرزندگی کودکانه و وضوح حقیقت.",
+    "۲۰. داوری (Judgement)": "بیداری روح؛ فراخوان به رسالت والاتر و رهایی از گذشته.",
+    "۲۱. جهان (The World)": "کمال و ادغام؛ پایان چرخه و جشن آگاهی کیهانی.",
 }
 
-# ─── Helper Functions ────────────────────────────────────────────────────────
+# --- Thelema meanings (reversed) ------------------------------------------
+THELEMA_REVERSED: dict[str, str] = {
+    "۰. دیوانه (The Fool)": "بی‌احتیاطی، ریسک نسنجیده و بی‌توجهی به پیامدها.",
+    "۱. جادوگر (The Magician)": "فریب‌کاری، سوء‌استفاده از قدرت یا انرژی پراکنده.",
+    "۲. کاهنه اعظم (The High Priestess)": "انسداد شهود، اسرار پنهان یا توهم معنوی.",
+    "۳. امپرس (The Empress)": "انسداد خلاقیت، وابستگی یا افراط در لذت.",
+    "۴. امپراطور (The Emperor)": "استبداد، سخت‌گیری مفرط یا مقاومت در برابر تغییر.",
+    "۵. هیرو فانت (The Hierophant)": "تعصب کور، دگم مذهبی یا رد راهنمایی معنوی.",
+    "۶. عاشقان (The Lovers)": "عدم‌تعهد، انتخاب نادرست یا تضاد ارزش‌ها.",
+    "۷. ارابه (The Chariot)": "کمبود کنترل، شکست در مسیر یا غرور افراطی.",
+    "۸. قدرت (Strength)": "خودکم‌بینی، تسلیم در برابر ترس یا سوء‌استفاده از زور.",
+    "۹. مرتاض (The Hermit)": "انزوای ناسالم، گم‌گشتگی یا نصیحت نادرست.",
+    "۱۰. چرخ سرنوشت (Wheel of Fortune)": "مقاومت با تغییر، بدبیاری یا تکرار چرخه‌ها.",
+    "۱۱. عدالت (Justice)": "بی‌انصافی، اجتناب از پیامد یا نابرابری.",
+    "۱۲. مرد معلق (The Hanged Man)": "تعلل بی‌ثمر، قربانی‌گری بیهوده یا دید محدود.",
+    "۱۳. مرگ (Death)": "مقاومت در برابر دگرگونی، رکود یا ترس از رها کردن.",
+    "۱۴. اعتدال (Temperance)": "عدم‌تعادل، افراط یا آمیختگی ناسازگار.",
+    "۱۵. شیطان (The Devil)": "اسارت در وابستگی، وسوسه یا سرکشی سایه.",
+    "۱۶. برج (The Tower)": "ویرانی طولانی، شوک مقاومتی یا سقوط آشفته.",
+    "۱۷. ستاره (The Star)": "ناامیدی، کاهش ایمان یا از دست دادن الهام.",
+    "۱۸. ماه (The Moon)": "سردرگمی، فوبیا یا فریب توسط خیالات.",
+    "۱۹. خورشید (The Sun)": "خوشی سطحی، غرور کودکانه یا شفافیت ناکامل.",
+    "۲۰. داوری (Judgement)": "خودقضاوتی شدید، سرکوب صدای درون یا عدم بخشش.",
+    "۲۱. جهان (The World)": "دوره ناتمام، احساس انسداد یا گریز از مسئولیت.",
+}
 
-def card_meaning(card: str, reversed_: bool) -> str:
-    """Return Thelema meaning respecting upright/reversed."""
-    return (THELEMA_REVERSED if reversed_ else THELEMA_UPRIGHT).get(card, "—")
-
-
-def synthesize_summary(selected: dict[str, tuple[str, bool]]) -> str:
-    """Create an overall narrative summarizing the spread.
-
-    Strategy (simple heuristic):
-    1. Collect first clause (before first '؛' or '،') of each card meaning.
-    2. Detect most frequent key words (e.g., تغییر، اراده، عشق، ...).
-    3. Compose a paragraph mentioning dominant themes and trajectory.
-    """
-    first_clauses: list[str] = []
-    keywords: list[str] = []
-
-    for pos, (card, rev) in selected.items():
-        meaning = card_meaning(card, rev)
-        clause = meaning.split("؛")[0].split("،")[0]
-        first_clauses.append(f"در موقعیت {pos}، کارت **{card.split('(')[0].strip()}** نشان‌دهندهٔ {clause} است")
-        # crude keyword extraction – pick final noun-ish word of clause
-        if clause:
-            keywords.extend(clause.split()[-2:])
-
-    # Determine top 3 keywords (heuristic, ignoring short tokens)
-    keywords = [w for w in keywords if len(w) > 3]
-    top_kw = [w for w, _ in Counter(keywords).most_common(3)]
-
-    paragraph = "؛ ".join(first_clauses) + "."
-    if top_kw:
-        paragraph += f"\n\n▪️ تم‌های غالب این فال عبارت‌اند از: {'، '.join(top_kw)}."
-    return paragraph
-
-# ─── STATE INIT ──────────────────────────────────────────────────────────────
-if "chosen_cards" not in st.session_state:
-    st.session_state.chosen_cards: dict[str, tuple[str, bool]] = {}
-
-# ─── SIDEBAR – SPREAD SELECTION ─────────────────────────────────────────────
-st.sidebar.header("نوع فال را برگزینید")
-spread_name = st.sidebar.selectbox("الگو:", list(SPREADS.keys()))
-positions = SPREADS[spread_name]
-
-st.sidebar.info("برای هر موقعیت، کارت و وضعیت معکوس بودن را مشخص کنید.")
-
-# ─── FORM FOR CARD INPUT ────────────────────────────────────────────────────
-with st.form(key="card_input_form"):
-    selected: dict[str, tuple[str, bool]] = {}
-    for pos in positions:
-        cols = st.columns([3, 1])
-        card = cols[0].selectbox(f"{pos}:", MAJOR_ARCANA, key=f"card_{pos}")
-        rev = cols[1].checkbox("معکوس؟", key=f"rev_{pos}")
-        selected[pos] = (card, rev)
-    submitted = st.form_submit_button("تفسیر کن 🪄")
-
-if submitted:
-    st.session_state.chosen_cards = selected
-
-# ─── DISPLAY INTERPRETATION ─────────────────────────────────────────────────
-if st.session_state.chosen_cards:
-    st.subheader("🔮 تفسیر کارت‌ها")
-    for pos, (card, rev) in st.session_state.chosen_cards.items():
-        st.markdown(f"### {pos} – {card}{' (معکوس)' if rev else ''}")
-
-        th_mean = card_meaning(card, rev)
-        qabalah = KABBALAH_PATHS.get(card, "—")
-
-        with st.expander("معانی تِلِما"):
-            st.write(th_mean)
-        with st.expander("ارتباط قبالا / درخت حیات"):
-            st.write(qabalah)
-        st.divider()
-
-    # 🪄 Overall synthesis
-    st.subheader("📜 جمع‌بندی نهایی فال")
-    summary_text = synthesize_summary(st.session_state.chosen_cards)
-    st.write(summary_text)
-    st.success("🎉 تفسیر و جمع‌بندی کامل شد.")
-else:
-    st.info("کارت‌ها را انتخاب کنید و دکمهٔ تفسیر را بزنید.")
-
-# ─── FOOTER ─────────────────────────────────────────────────────────────────
-st.markdown(
-    "---\n"
-    "© 2025 با ❤️ توسط شما · [کد منبع](https://github.com/<your-user>/tarot-interpreter) · برای سرگرمی استفاده شود"
-)
+# --- Qabalah paths ---------------------------------------------------------
+KABBALAH_PATHS: dict[str, str] = {
+    "۰. دیوانه (The Fool)": "حرف א (Aleph) – مسیر ۱۱ بین כתר و حکمه؛ عنصر هوا و جرقه حیات.",
+    "۱. جادوگر (The Magician)": "حرف ב (Beth) – مسیر ۱۲ بین כתר و بینه؛ انتقال بینش به ساختار.",
+    "۲. کاهنه اعظم (The High Priestess)": "حرف ג (Gimel) – مسیر ۱۳ بین כתר و تیفارت؛ کانال آگاهی زیرقشری.",
+    "۳. امپرس (The Em
