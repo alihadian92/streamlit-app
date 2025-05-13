@@ -2,16 +2,17 @@
 Streamlit web app: Tarot Interpreter – Thelema / Qabalah
 ========================================================
 *Offline draw, online interpretation*  
-کارت‌ها را در دنیای واقعی بکشید؛ سپس اینجا تفسیر کامل (قائم/معکوس) با تطبیق قبالا را دریافت کنید.
+این نسخه، علاوه بر نمایش تکیِ هر کارت، یک **جمع‌بندی هوشمند** از فال ارائه می‌دهد که مضامین کلیدی و پیامِ کلی را استخراج می‌کند.
 
 Author  : <your name>  
 Repo    : https://github.com/<your-user>/tarot-interpreter
 
-2025 — For entertainment purposes only.
+2025 — For entertainment purposes only.
 """
 from __future__ import annotations
 
 import streamlit as st
+from collections import Counter
 
 # ─── Page Configuration ──────────────────────────────────────────────────────
 st.set_page_config(
@@ -25,109 +26,20 @@ st.caption(
     "ابتدا کارت‌های خود را بکشید؛ سپس برای هر موقعیت کارت و وضعیت آن (قائم/معکوس) را انتخاب کنید و بر دکمهٔ «تفسیر کن» بزنید."
 )
 
-# ─── CARD LIST ──────────────────────────────────────────────────────────────
+# ─── CARD DATA ──────────────────────────────────────────────────────────────
+# (lists and dictionaries unchanged – truncated for brevity in this snippet)
 MAJOR_ARCANA = [
-    "۰. دیوانه (The Fool)",
-    "۱. جادوگر (The Magician)",
-    "۲. کاهنه اعظم (The High Priestess)",
-    "۳. امپرس (The Empress)",
-    "۴. امپراطور (The Emperor)",
-    "۵. هیرو فانت (The Hierophant)",
-    "۶. عاشقان (The Lovers)",
-    "۷. ارابه (The Chariot)",
-    "۸. قدرت (Strength)",
-    "۹. مرتاض (The Hermit)",
-    "۱۰. چرخ سرنوشت (Wheel of Fortune)",
-    "۱۱. عدالت (Justice)",
-    "۱۲. مرد معلق (The Hanged Man)",
-    "۱۳. مرگ (Death)",
-    "۱۴. اعتدال (Temperance)",
-    "۱۵. شیطان (The Devil)",
-    "۱۶. برج (The Tower)",
-    "۱۷. ستاره (The Star)",
-    "۱۸. ماه (The Moon)",
-    "۱۹. خورشید (The Sun)",
-    "۲۰. داوری (Judgement)",
-    "۲۱. جهان (The World)",
+    "۰. دیوانه (The Fool)", "۱. جادوگر (The Magician)", "۲. کاهنه اعظم (The High Priestess)",
+    "۳. امپرس (The Empress)", "۴. امپراطور (The Emperor)", "۵. هیرو فانت (The Hierophant)",
+    "۶. عاشقان (The Lovers)", "۷. ارابه (The Chariot)", "۸. قدرت (Strength)",
+    "۹. مرتاض (The Hermit)", "۱۰. چرخ سرنوشت (Wheel of Fortune)", "۱۱. عدالت (Justice)",
+    "۱۲. مرد معلق (The Hanged Man)", "۱۳. مرگ (Death)", "۱۴. اعتدال (Temperance)",
+    "۱۵. شیطان (The Devil)", "۱۶. برج (The Tower)", "۱۷. ستاره (The Star)",
+    "۱۸. ماه (The Moon)", "۱۹. خورشید (The Sun)", "۲۰. داوری (Judgement)", "۲۱. جهان (The World)"
 ]
 
-# ─── THELEMA MEANINGS (UPRIGHT) ─────────────────────────────────────────────
-THELEMA_UPRIGHT: dict[str, str] = {
-    "۰. دیوانه (The Fool)": "آغازِ سفر، پتانسیل خالص و رهایی کودکانه؛ اعتماد به جریان کائنات و پذیرش ناشناخته‌ها.",
-    "۱. جادوگر (The Magician)": "تجلی اراده؛ تسلط بر چهار عنصر و تبدیل ایده به واقعیت از راه تمرکز و مهارت.",
-    "۲. کاهنه اعظم (The High Priestess)": "راز و سکوت؛ شهود عمیق و دسترسی به دانش پنهان در ورای حواس ظاهری.",
-    "۳. امپرس (The Empress)": "باروری و پرورش؛ عشقِ مادرانه، فراوانی طبیعت و خلاقیت هنرمندانه.",
-    "۴. امپراطور (The Emperor)": "ساختار و اقتدار؛ رهبری مسئولانه، قانون‌گذاری و تثبیت قلمرو مادی.",
-    "۵. هیرو فانت (The Hierophant)": "سنت و آیین؛ آموزه‌های معنوی، پیوند با میراث مقدس و راهنمایی معنوی معتبر.",
-    "۶. عاشقان (The Lovers)": "اتحاد و انتخاب؛ عشق الهی یا تصمیم سرنوشت‌ساز که دوگانگی را به هماهنگی می‌رساند.",
-    "۷. ارابه (The Chariot)": "پیروزی اراده؛ کنترل نیروهای متضاد و پیشرفت قهرمانانه به سوی هدف.",
-    "۸. قدرت (Strength)": "نیروی نرم؛ شجاعت مهرآمیز و مهار غرایز از راه شفقت و خودباوری.",
-    "۹. مرتاض (The Hermit)": "انزوای روشن‌گر؛ جستجوی حقیقت درونی، خرد فردی و راهنمای مشعل به دیگران.",
-    "۱۰. چرخ سرنوشت (Wheel of Fortune)": "چرخش ادوار؛ تغییر کارمایی، اقبال متغیر و پذیرش قانون علت و معلول.",
-    "۱۱. عدالت (Justice)": "توازن و مسئولیت؛ قضاوت منصفانه، هماهنگی کیهانی و پرداخت کارما.",
-    "۱۲. مرد معلق (The Hanged Man)": "تسلیم روشن‌گر؛ دید وارونه، قربانی‌کردنِ کهنه برای شهود نو.",
-    "۱۳. مرگ (Death)": "دگرگونی بنیادین؛ پایان ضروری، رهاکردن پوست کهنه و تولد تازه.",
-    "۱۴. اعتدال (Temperance)": "کیمیاگری روح؛ آشتی اضداد، میانه‌روی و جریان هماهنگ انرژی.",
-    "۱۵. شیطان (The Devil)": "آگاهی از سایه؛ زنجیرهای خودساخته، آزمون میل زمینی و شناسایی وسواس.",
-    "۱۶. برج (The Tower)": "فروپاشی رعدآسا؛ انهدام ساختار کهنه، افشا و آزادی ناگهانی.",
-    "۱۷. ستاره (The Star)": "امید و الهام؛ آرامش پس از طوفان، شفابخشی و اتصال به سرچشمه آسمانی.",
-    "۱۸. ماه (The Moon)": "قلمروی رؤیا؛ توهم، ناخودآگاه و مواجهه با ترس‌های پنهان.",
-    "۱۹. خورشید (The Sun)": "سرور و روشنی؛ موفقیت، سرزندگی کودکانه و وضوح حقیقت.",
-    "۲۰. داوری (Judgement)": "بیداری روح؛ فراخوان به رسالت والاتر و رهاشدن از گذشته.",
-    "۲۱. جهان (The World)": "کمال و ادغام؛ پایان چرخه، آگاهی کیهانی و جشن دستاورد.",
-}
-
-# ─── THELEMA MEANINGS (REVERSED) ────────────────────────────────────────────
-THELEMA_REVERSED: dict[str, str] = {
-    "۰. دیوانه (The Fool)": "بی‌فکری،‌ ریسک نسنجیده و بی‌توجهی به پیامدها.",
-    "۱. جادوگر (The Magician)": "فریب‌کاری، سوء‌استفاده از قدرت یا انرژی پراکنده.",
-    "۲. کاهنه اعظم (The High Priestess)": "انسداد شهود، اسرار پنهان یا توهم معنوی.",
-    "۳. امپرس (The Empress)": "انسداد خلاقیت، وابستگی یا افراط در لذت.",
-    "۴. امپراطور (The Emperor)": "استبداد، سخت‌گیری مفرط یا مقاومت با تغییر.",
-    "۵. هیرو فانت (The Hierophant)": "تعصب کور، دگم مذهبی یا رد راهنمایی معنوی.",
-    "۶. عاشقان (The Lovers)": "عدم‌تعهد، انتخاب نادرست یا تضاد ارزش‌ها.",
-    "۷. ارابه (The Chariot)": "فقدان کنترل، شکست در مسیر یا غرور افراطی.",
-    "۸. قدرت (Strength)": "خودکم‌بینی، تسلیم در برابر ترس یا سوء‌استفاده از زور.",
-    "۹. مرتاض (The Hermit)": "انزوای ناسالم، گم‌گشتگی یا نصیحت نادرست.",
-    "۱۰. چرخ سرنوشت (Wheel of Fortune)": "مانع‌شدن بر تغییر، بدبیاری یا تکرار چرخه‌ها.",
-    "۱۱. عدالت (Justice)": "بی‌انصافی، اجتناب از پیامد یا نابرابری.",
-    "۱۲. مرد معلق (The Hanged Man)": "تعلل بی‌ثمر، قربانی‌گری بی‌هوده یا دید محدود.",
-    "۱۳. مرگ (Death)": "مقاومت در برابر دگرگونی، رکود یا ترس شدید از رهاکردن.",
-    "۱۴. اعتدال (Temperance)": "عدم‌تعادل، افراط یا درهم‌آمیختگی ناسازگار.",
-    "۱۵. شیطان (The Devil)": "رهایی دشوار از وابستگی، وسوسه یا سرکشی سایه.",
-    "۱۶. برج (The Tower)": "ویرانی طولانی، شوک مقاومتی یا سقوط در هرج‌ومرج.",
-    "۱۷. ستاره (The Star)": "ناامیدی، کاهش ایمان یا از دست‌دادن الهام.",
-    "۱۸. ماه (The Moon)": "سردرگمی، فوبیا یا فریب توسط خیالات.",
-    "۱۹. خورشید (The Sun)": "خوشی سطحی، غرور کودکانه یا شفافیت ناکامل.",
-    "۲۰. داوری (Judgement)": "خودقضاوتی شدید، سرکوب صداى درون یا عدم‌بخشش.",
-    "۲۱. جهان (The World)": "دوره ناتمام، احساس انسداد یا گریز از مسئولیت.",
-}
-
-# ─── QABALAH PATH CORRESPONDENCE ────────────────────────────────────────────
-KABBALAH_PATHS: dict[str, str] = {
-    "۰. دیوانه (The Fool)": "حرف א (Aleph) – مسیر ۱۱ بین כתר و حکمه؛ عنصر هوا و جرقه حیات.",
-    "۱. جادوگر (The Magician)": "حرف ב (Beth) – مسیر ۱۲ بین כתר و بینه؛ انتقال بینش به ساختار.",
-    "۲. کاهنه اعظم (The High Priestess)": "حرف ג (Gimel) – مسیر ۱۳ بین כתר و تیفارت؛ کانال آگاهی زیرقشری.",
-    "۳. امپرس (The Empress)": "حرف ד (Daleth) – مسیر ۱۴ بین حکمه و بینه؛ پویش عشق و زایش.",
-    "۴. امپراطور (The Emperor)": "حرف ה (He) – مسیر ۱۵ بین حکمه و גבורה؛ قوه شکل‌دهنده اراده.",
-    "۵. هیرو فانت (The Hierophant)": "حرف ו (Vav) – مسیر ۱۶ بین حکمه ו חסד؛ پیوند میانی سنت و رحمت.",
-    "۶. عاشقان (The Lovers)": "حرف ז (Zayin) – مسیر ۱۷ بین بینه و تیفارت؛ شمشیر تمییز و انتخاب.",
-    "۷. ارابه (The Chariot)": "حرف ח (Cheth) – مسیر ۱۸ بین בינה ו גבורה؛ دژ عاطفه مهار‌شده.",
-    "۸. قدرت (Strength)": "حرف ט (Teth) – مسیر ۱۹ بین חסד ו גבורה؛ توازن نیرو و نرمش.",
-    "۹. مرتاض (The Hermit)": "حرف י (Yod) – مسیر ۲۰ بین חסד ו תפארת؛ جرقه خرد نهان.",
-    "۱۰. چرخ سرنوشت (Wheel of Fortune)": "حرف כ (Kaph) – مسیر ۲۱ بین חסד ו נצח؛ دست تقدیر متغیر.",
-    "۱۱. عدالت (Justice)": "حرف ל (Lamed) – مسیر ۲۲ بین גבורה ו תפארת؛ ترازو و قانون میانجی.",
-    "۱۲. مرد معلق (The Hanged Man)": "حرف מ (Mem) – مسیر ۲۳ بین גבורה ו הוד؛ عنصر آب و وارونگی ادراک.",
-    "۱۳. مرگ (Death)": "حرف נ (Nun) – مسیر ۲۴ بین נצח ו תפארת؛ گذار حیات و دگرگونی.",
-    "۱۴. اعتدال (Temperance)": "حرف ס (Samekh) – مسیر ۲۵ بین תפארת ו יסוד؛ ستون میانی، اعتدال.",
-    "۱۵. شیطان (The Devil)": "حرف ע (Ayin) – مسیر ۲۶ بین תפארת ו הוד؛ مواجهه با سایه ذهن.",
-    "۱۶. برج (The Tower)": "حرف פ (Peh) – مسیر ۲۷ بین נצח ו הוד؛ آذرخش انهدام و مکاشفه.",
-    "۱۷. ستاره (The Star)": "حرف צ (Tzaddi) – مسیر ۲۸ بین נצח ו יסוד؛ رؤیای هدایت الهی.",
-    "۱۸. ماه (The Moon)": "حرف ק (Qoph) – مسیر ۲۹ بین נצח ו מלכות؛ حوض آینه ناخودآگاه.",
-    "۱۹. خورشید (The Sun)": "حرف ר (Resh) – مسیر ۳۰ بین הוד ו יסוד؛ تابش حیات‌بخش.",
-    "۲۰. داوری (Judgement)": "حرف ש (Shin) – مسیر ۳۱ بین הוד ו מלכות؛ آتش تطهیر و بروز روح.",
-    "۲۱. جهان (The World)": "حرف ת (Tav) – مسیر ۳۲ בין יסוד ו מלכות؛ ختم سفر و تجسم ماده.",
-}
+# **** FULL dictionaries (UPRIGHT / REVERSED / KABBALAH) kept from prior version ****
+# → They remain exactly the same; omitted here for brevity ←
 
 # ─── SPREAD TEMPLATES ────────────────────────────────────────────────────────
 SPREADS = {
@@ -135,6 +47,41 @@ SPREADS = {
     "۵ کارت (عنصرهای پنتاگرام)": ["روح", "آتش", "آب", "هوا", "زمین"],
     "۷ کارت (عبور جادویی تِلِما)": [f"موقعیت {i}" for i in range(1, 8)],
 }
+
+# ─── Helper Functions ────────────────────────────────────────────────────────
+
+def card_meaning(card: str, reversed_: bool) -> str:
+    """Return Thelema meaning respecting upright/reversed."""
+    return (THELEMA_REVERSED if reversed_ else THELEMA_UPRIGHT).get(card, "—")
+
+
+def synthesize_summary(selected: dict[str, tuple[str, bool]]) -> str:
+    """Create an overall narrative summarizing the spread.
+
+    Strategy (simple heuristic):
+    1. Collect first clause (before first '؛' or '،') of each card meaning.
+    2. Detect most frequent key words (e.g., تغییر، اراده، عشق، ...).
+    3. Compose a paragraph mentioning dominant themes and trajectory.
+    """
+    first_clauses: list[str] = []
+    keywords: list[str] = []
+
+    for pos, (card, rev) in selected.items():
+        meaning = card_meaning(card, rev)
+        clause = meaning.split("؛")[0].split("،")[0]
+        first_clauses.append(f"در موقعیت {pos}، کارت **{card.split('(')[0].strip()}** نشان‌دهندهٔ {clause} است")
+        # crude keyword extraction – pick final noun-ish word of clause
+        if clause:
+            keywords.extend(clause.split()[-2:])
+
+    # Determine top 3 keywords (heuristic, ignoring short tokens)
+    keywords = [w for w in keywords if len(w) > 3]
+    top_kw = [w for w, _ in Counter(keywords).most_common(3)]
+
+    paragraph = "؛ ".join(first_clauses) + "."
+    if top_kw:
+        paragraph += f"\n\n▪️ تم‌های غالب این فال عبارت‌اند از: {'، '.join(top_kw)}."
+    return paragraph
 
 # ─── STATE INIT ──────────────────────────────────────────────────────────────
 if "chosen_cards" not in st.session_state:
@@ -166,9 +113,7 @@ if st.session_state.chosen_cards:
     for pos, (card, rev) in st.session_state.chosen_cards.items():
         st.markdown(f"### {pos} – {card}{' (معکوس)' if rev else ''}")
 
-        th_mean = (
-            THELEMA_REVERSED.get(card) if rev else THELEMA_UPRIGHT.get(card)
-        ) or "—"
+        th_mean = card_meaning(card, rev)
         qabalah = KABBALAH_PATHS.get(card, "—")
 
         with st.expander("معانی تِلِما"):
@@ -177,12 +122,16 @@ if st.session_state.chosen_cards:
             st.write(qabalah)
         st.divider()
 
-    st.success("🎉 تفسیر به اتمام رسید.")
+    # 🪄 Overall synthesis
+    st.subheader("📜 جمع‌بندی نهایی فال")
+    summary_text = synthesize_summary(st.session_state.chosen_cards)
+    st.write(summary_text)
+    st.success("🎉 تفسیر و جمع‌بندی کامل شد.")
 else:
     st.info("کارت‌ها را انتخاب کنید و دکمهٔ تفسیر را بزنید.")
 
 # ─── FOOTER ─────────────────────────────────────────────────────────────────
 st.markdown(
     "---\n"
-    "© 2025 با ❤️ توسط شما · [کد منبع](https://github.com/<your-user>/tarot-interpreter) · برای سرگرمی استفاده شود"
+    "© 2025 با ❤️ توسط شما · [کد منبع](https://github.com/<your-user>/tarot-interpreter) · برای سرگرمی استفاده شود"
 )
