@@ -1,3 +1,7 @@
 streamlit
 gtts
 IPython
+try:
+    import ephem
+except ModuleNotFoundError:
+    ephem = None
