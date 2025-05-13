@@ -1,9 +1,9 @@
 # magickal_record_app.py
-"""Magickal Record – Streamlit Web-App (v4.1 hot-fix)
-====================================================
-• Fixes SyntaxError in `_manage_generic` (missing parenthesis)
-• Restores edit form helper & main navigation footer
-• Adds quick SQLite backup button in sidebar
+"""Magickal Record – Streamlit Web‑App (v4.2 fallback‑charts)
+============================================================
+• Gracefully handles absence of **matplotlib** (Streamlit Cloud default)
+• Uses bar charts when matplotlib not installed
+• If you prefer pies, just add `matplotlib` to requirements.txt and redeploy
 """
 from __future__ import annotations
 
@@ -11,24 +11,25 @@ import datetime as dt
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-import matplotlib.pyplot as plt
+# --- Try matplotlib (optional) ----------------------------------------------
+try:
+    import matplotlib.pyplot as plt  # type: ignore
+except ModuleNotFoundError:
+    plt = None  # fallback to Streamlit built‑ins
+
 import pandas as pd
 import streamlit as st
 from sqlalchemy import Column, Date, Integer, String, Text, Time, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-# ╭─────────────────────────────────────────────────╮
-# │ 🔐  OPTIONAL PASSWORD                          │
-# ╰─────────────────────────────────────────────────╯
+# ── Security ────────────────────────────────────────────────────────────────
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", "")
 if APP_PASSWORD and st.session_state.get("auth_ok") is not True:
     if st.text_input("Password", type="password") != APP_PASSWORD:
         st.stop()
     st.session_state["auth_ok"] = True
 
-# ╭─────────────────────────────────────────────────╮
-# │ 💾  DATABASE                                   │
-# ╰─────────────────────────────────────────────────╯
+# ── Database setup ──────────────────────────────────────────────────────────
 DB_PATH = Path("magickal_record.db")
 engine = create_engine(f"sqlite:///{DB_PATH}", future=True, echo=False)
 Session = sessionmaker(bind=engine)
@@ -61,33 +62,22 @@ class Dream(Base):
 
 Base.metadata.create_all(engine)
 
-# ╭─────────────────────────────────────────────────╮
-# │ 🌙  MOON-PHASE                                  │
-# ╰─────────────────────────────────────────────────╯
+# ── Moon phase util ─────────────────────────────────────────────────────────
 try:
     import ephem  # type: ignore
 except ModuleNotFoundError:
     ephem = None
 
 _PHASES: list[Tuple[str, float]] = [
-    ("New Moon", 0),
-    ("Waxing Crescent", 4),
-    ("First Quarter", 7),
-    ("Waxing Gibbous", 11),
-    ("Full Moon", 15),
-    ("Waning Gibbous", 18),
-    ("Last Quarter", 22),
-    ("Waning Crescent", 26),
+    ("New Moon", 0), ("Waxing Crescent", 4), ("First Quarter", 7), ("Waxing Gibbous", 11),
+    ("Full Moon", 15), ("Waning Gibbous", 18), ("Last Quarter", 22), ("Waning Crescent", 26),
 ]
-
 
 def moon_phase_str(d: dt.date) -> str:
     age = ephem.Moon(d).moon_phase * 29.53 if ephem else ((d - dt.date(2000, 1, 6)).days % 29.53)
     return min(_PHASES, key=lambda p: abs(p[1] - age))[0]
 
-# ╭─────────────────────────────────────────────────╮
-# │ ✨  DATA HELPERS                                │
-# ╰─────────────────────────────────────────────────╯
+# ── CRUD helpers ────────────────────────────────────────────────────────────
 
 def _save(model, data: Dict[str, Any]):
     with Session() as s:
@@ -123,19 +113,14 @@ def _load(model, filters: Dict[str, Any] | None = None) -> pd.DataFrame:
             df.drop(columns=["_sa_instance_state"], inplace=True)
         return df
 
-# ╭─────────────────────────────────────────────────╮
-# │ 🔧  UTILITIES                                  │
-# ╰─────────────────────────────────────────────────╯
+# ── Small utils ─────────────────────────────────────────────────────────────
 
 def _calc_streak(dates: list[dt.date]) -> int:
     dates = sorted(set(dates))
     streak = cur = 0
     prev: dt.date | None = None
     for d in dates:
-        if prev and (d - prev).days == 1:
-            cur += 1
-        else:
-            cur = 1
+        cur = cur + 1 if prev and (d - prev).days == 1 else 1
         streak = max(streak, cur)
         prev = d
     return streak
@@ -147,9 +132,24 @@ def _split_tags(series: pd.Series) -> list[str]:
         tags.extend([x.strip() for x in t.split(",") if x.strip()])
     return tags
 
-# ╭─────────────────────────────────────────────────╮
-# │ 🖊️  RITUAL PAGES                               │
-# ╰─────────────────────────────────────────────────╯
+# ── Shared UI components ────────────────────────────────────────────────────
+
+def _pie_or_bar(series: pd.Series, title: str):
+    if plt:
+        fig, ax = plt.subplots()
+        ax.set_title(title)
+        ax.pie(series, labels=series.index, autopct="%1.0f%%")
+        st.pyplot(fig)
+    else:
+        st.subheader(title)
+        st.bar_chart(series)
+
+
+def _table(df: pd.DataFrame, fname: str):
+    st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
+    st.download_button("Export CSV", df.to_csv(index=False), file_name=fname)
+
+# ── Ritual pages ────────────────────────────────────────────────────────────
 R_PRACTICES = ["LBRP", "Middle Pillar", "Meditation", "Resh", "Eucharist", "Yoga", "Other"]
 
 
@@ -160,7 +160,7 @@ def ritual_new():
     stime = c1.time_input("Start", dt.datetime.now().time())
     etime = c2.time_input("End")
     ptype = c2.selectbox("Practice", R_PRACTICES)
-    pre = st.text_area("Pre-Feeling")
+    pre = st.text_area("Pre‑Feeling")
     exp = st.text_area("Experience")
     ins = st.text_area("Insights")
     tags = st.text_input("Tags")
@@ -196,9 +196,7 @@ def ritual_manage():
     st.subheader("🛠️ Manage Rituals")
     _manage_generic(Ritual, R_PRACTICES)
 
-# ╭─────────────────────────────────────────────────╮
-# │ 🖊️  DREAM PAGES                                │
-# ╰─────────────────────────────────────────────────╯
+# ── Dream pages ─────────────────────────────────────────────────────────────
 D_EMOTIONS = ["Calm", "Fear", "Joy", "Sadness", "Lucid", "Other"]
 
 
@@ -237,41 +235,7 @@ def dream_manage():
     st.subheader("🛠️ Manage Dreams")
     _manage_generic(Dream, [])
 
-# ╭─────────────────────────────────────────────────╮
-# │ 📊  DASHBOARD                                   │
-# ╰─────────────────────────────────────────────────╯
-
-def dashboard():
-    st.title("📊 Dashboard")
-    r_df, d_df = _load(Ritual), _load(Dream)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.header("Rituals")
-        st.metric("Total", len(r_df))
-        if not r_df.empty:
-            st.pyplot(_pie(r_df.practice_type.value_counts()))
-            st.metric("Longest streak", _calc_streak(list(r_df.date)))
-    with col2:
-        st.header("Dreams")
-        st.metric("Total", len(d_df))
-        if not d_df.empty:
-            emo_counts = pd.Series(_split_tags(d_df.emotions)).value_counts()
-            st.pyplot(_pie(emo_counts))
-
-# ╭─────────────────────────────────────────────────╮
-# │ 🔧  SHARED COMPONENTS                           │
-# ╰─────────────────────────────────────────────────╯
-
-def _pie(series: pd.Series):
-    fig, ax = plt.subplots()
-    ax.pie(series, labels=series.index, autopct="%1.0f%%")
-    return fig
-
-
-def _table(df: pd.DataFrame, fname: str):
-    st.dataframe(df.sort_values("date", ascending=False), use_container_width=True)
-    st.download_button("Export CSV", df.to_csv(index=False), file_name=fname)
-
+# ── Generic manage + edit helpers ───────────────────────────────────────────
 
 def _manage_generic(model, ptypes):
     df = _load(model)
@@ -303,7 +267,8 @@ def _edit_form(model, row: pd.Series, ptypes):
             exp = st.text_area("Experience", row.experience_notes or "")
             ins = st.text_area("Insights", row.insights or "")
             tags = st.text_input("Tags", row.tags or "")
-            if st.form_submit_button("Save"):
+            submit = st.form_submit_button("Save")
+            if submit:
                 _update(model, row.id, {
                     "date": date,
                     "start_time": stime,
@@ -317,13 +282,14 @@ def _edit_form(model, row: pd.Series, ptypes):
                 })
                 st.success("Updated")
                 st.experimental_rerun()
-        else:  # Dream
+        else:
             date = st.date_input("Date", value=row.date)
             txt = st.text_area("Dream", row.dream_text or "")
             emo = st.text_input("Emotions", row.emotions or "")
             ins = st.text_area("Insights", row.insights or "")
             tags = st.text_input("Tags", row.tags or "")
-            if st.form_submit_button("Save"):
+            submit = st.form_submit_button("Save")
+            if submit:
                 _update(model, row.id, {
                     "date": date,
                     "dream_text": txt,
@@ -334,20 +300,36 @@ def _edit_form(model, row: pd.Series, ptypes):
                 st.success("Updated")
                 st.experimental_rerun()
 
-# ╭─────────────────────────────────────────────────╮
-# │ 🚀  MAIN                                        │
-# ╰─────────────────────────────────────────────────╯
+# ── Dashboard ───────────────────────────────────────────────────────────────
+
+def dashboard():
+    st.title("📊 Dashboard")
+    r_df, d_df = _load(Ritual), _load(Dream)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.header("Rituals")
+        st.metric("Total", len(r_df))
+        if not r_df.empty:
+            _pie_or_bar(r_df.practice_type.value_counts(), "By practice")
+            st.metric("Longest streak", _calc_streak(list(r_df.date)))
+    with col2:
+        st.header("Dreams")
+        st.metric("Total", len(d_df))
+        if not d_df.empty:
+            emo_counts = pd.Series(_split_tags(d_df.emotions)).value_counts()
+            _pie_or_bar(emo_counts, "Emotions")
+
+# ── Main ────────────────────────────────────────────────────────────────────
 
 def main():
     st.set_page_config("Magickal Record", page_icon="✨", layout="wide")
     st.sidebar.title("Magickal Record")
-    # Backup button
     with open(DB_PATH, "rb") as dbf:
         st.sidebar.download_button("⏬ Backup DB", dbf.read(), file_name="magickal_record.db")
 
     section = st.sidebar.radio("Section", ["Rituals", "Dreams", "Dashboard"])
     if section == "Rituals":
-        page = st.sidebar.radio("Page", ["New", "Browse", "Manage"])
+        page = st.sidebar.radio("Page", ["New", "Browse", "Manage"], key="r_page")
         if page == "New":
             ritual_new()
         elif page == "Browse":
